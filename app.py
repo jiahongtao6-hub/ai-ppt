@@ -1,55 +1,51 @@
 import streamlit as st
 import google.generativeai as genai
-import os
 
-# --- 1. 核心安全配置：强制锁定 v1 正式版，杜绝 404 报错 ---
-os.environ["GOOGLE_API_VERSION"] = "v1" 
-
-# 从 Streamlit 的 Secrets 中读取 Key，既安全又不报错
-if "GOOGLE_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-else:
-    st.error("请先在 Streamlit 后台设置中配置你的 API Key")
-
-# --- 2. 高审美 CSS (仿 Nano Studio 风格) ---
-st.set_page_config(page_title="哈弗猛龙 PR 实验室", layout="wide")
+# --- 1. 高审美 UI 配置 (仿 Nano Studio) ---
+st.set_page_config(page_title="哈弗 PR 实验室", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; color: white; }
-    .card {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(15px);
-        border-radius: 15px;
-        padding: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        text-align: center;
-    }
-    .stButton>button { background-color: #ff6b00; color: white; border-radius: 8px; width: 100%; }
+    .card { background: rgba(255,255,255,0.05); border-radius: 15px; padding: 20px; border: 1px solid rgba(255,255,255,0.1); text-align: center; }
+    .stButton>button { background-color: #ff6b00; color: white; width: 100%; border: none; height: 50px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
+# --- 2. 安全读取 Key & 强制拦截空钥匙 ---
+if "GOOGLE_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+else:
+    st.warning("⚠️ 还没在后台配置 API Key 呢！请在 Streamlit 控制台的 Settings -> Secrets 填入：GOOGLE_API_KEY = '你的密钥'")
+    st.stop() # 钥匙不对直接停下，不报那个红错
+
 # --- 3. 界面逻辑 ---
 st.title("🚗 哈弗（Haval）竞标策略中心")
-st.caption("当前权限：Paid Tier 3 (Unlimited)")
+st.caption("🚀 Paid Tier 3 权限已激活")
 
-col1, col2 = st.columns([1, 1.5])
+left, right = st.columns([1, 1.5])
 
-with col1:
-    st.markdown("### 1. 风格选择")
+with left:
+    st.markdown("### 1. 风格预设")
     st.markdown('<div class="card">🔥 硬核越野 | ⚡ 智电科技</div>', unsafe_allow_html=True)
     
-    st.markdown("### 2. 输入需求")
-    prompt = st.text_area("输入竞标核心点：", placeholder="例如：哈弗猛龙对比山海 T2 的公关策略...")
+    prompt = st.text_area("输入竞标核心点（别留空）：", placeholder="例如：哈弗猛龙对比山海 T2...")
     
     if st.button("🚀 生成方案"):
-        # 调用逻辑最强的 Pro 模型
-        model = genai.GenerativeModel('gemini-1.5-pro')
-        response = model.generate_content(f"作为哈弗公关专家，请针对以下内容写出 PPT 大纲：{prompt}")
-        st.session_state.result = response.text
+        if not prompt.strip():
+            st.error("请输入点内容再生成呀！")
+        else:
+            with st.spinner("正在调用 Tier 3 顶级逻辑中..."):
+                try:
+                    # 补丁：使用全路径模型名，兼容 v1beta 和 v1
+                    model = genai.GenerativeModel('models/gemini-1.5-pro') 
+                    response = model.generate_content(f"作为哈弗公关专家，请写出 PPT 大纲：{prompt}")
+                    st.session_state.result = response.text
+                except Exception as e:
+                    st.error(f"发生了一点小意外：{e}")
 
-with col2:
-    st.markdown("### 🖼️ 预览区")
+with col2 if 'col2' in locals() else right:
+    st.markdown("### 🖼️ 实时预览")
     if 'result' in st.session_state:
-        st.text_area("方案详情：", value=st.session_state.result, height=500)
+        st.text_area("大纲详情：", value=st.session_state.result, height=500)
     else:
         st.info("方案生成后将显示在这里。")
