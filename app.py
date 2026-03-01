@@ -1,7 +1,7 @@
 import google.generativeai as genai
 
 # 填入你的真实 API KEY
-genai.configure(api_key="这里填你的KEY") 
+genai.configure(api_key="AIzaSyATeN0SHo3ClqZVq2DabCDOwwdHt7uruzE") 
 
 print("开始测试 Imagen 出图权限...")
 try:
