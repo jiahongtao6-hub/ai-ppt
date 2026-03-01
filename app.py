@@ -2,103 +2,103 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# --- 1. 核心动力：顶级视觉设计总监人格注入 ---
+# --- 1. 核心动力：锁定 2026 顶级模型路径 ---
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"].strip())
 
-# 状态管理：锁定全生命周期
-if 'history' not in st.session_state: st.session_state.history = []
-if 'current_slide' not in st.session_state: 
-    st.session_state.current_slide = {"title": "哈弗猛龙：智电越野", "content": "等待策略注入...", "design_specs": {}, "kv": None}
-if 'vibe' not in st.session_state: st.session_state.vibe = "未定义"
+# 初始化：记录策略逻辑与全案进度
+if 'chat_log' not in st.session_state: st.session_state.chat_log = []
+if 'strategy_board' not in st.session_state: 
+    st.session_state.strategy_board = {"diagnosis": "", "outline": "", "content": "", "kv": None}
+if 'work_phase' not in st.session_state: st.session_state.work_phase = "策略诊断"
 
-# --- 2. 极致审美：Nano Studio 纯净视觉规范 ---
-st.set_page_config(page_title="Nano Studio", layout="wide")
+# --- 2. 极致审美：Nano Studio 专业视觉规范 ---
+st.set_page_config(page_title="Haval Strategic Studio", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #fcfcfc; color: #1a1a1a; }
-    /* 左侧对话面板 */
-    section[data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #eee; width: 420px !important; }
-    /* 商业级幻灯片画板 */
-    .slide-canvas {
-        background: white; border-radius: 12px; border: 1px solid #efefef;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.04); min-height: 550px;
-        position: relative; overflow: hidden;
+    section[data-testid="stSidebar"] { background-color: white !important; border-right: 1px solid #eee; width: 450px !important; }
+    /* 策略画板容器 */
+    .strategy-card {
+        background: white; border-radius: 12px; padding: 35px; margin-bottom: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #f0f0f0;
     }
-    .design-specs { background: #f8f9fa; border-top: 1px solid #eee; padding: 20px; font-size: 0.85rem; }
+    .phase-tag { color: #ff6b00; font-weight: bold; font-size: 0.9rem; margin-bottom: 15px; }
+    .stButton>button { border-radius: 8px; font-weight: 500; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 左侧：交互沟通台 (视觉总监人格) ---
+# --- 3. 左侧：深度沟通区 (战略咨询 + 视觉总监) ---
 with st.sidebar:
     st.title("🦔 Nano Studio")
-    st.caption("🚀 Paid Tier 3 | 余额: HK$2,340")
+    st.caption(f"🚀 Paid Tier 3 | 余额: HK$2,340")
     
-    chat_container = st.container(height=350)
-    for m in st.session_state.history:
-        chat_container.chat_message(m["role"]).write(m["content"])
+    # 强制分步流控制
+    st.session_state.work_phase = st.radio("当前工作流", ["策略诊断", "大纲架构", "内容填充", "视觉定稿"])
     
-    # 风格库：支持点选、复刻与投喂
-    st.markdown("---")
-    st.write("🎨 **风格与审美投喂**")
-    uploaded_style = st.file_uploader("🖼️ 投喂审美参考 (可选)", type=['png', 'jpg'])
+    chat_box = st.container(height=380)
+    for m in st.session_state.chat_log:
+        chat_box.chat_message(m["role"]).write(m["content"])
     
-    if user_cmd := st.chat_input("对我下达哈弗竞标指令..."):
-        st.session_state.history.append({"role": "user", "content": user_cmd})
-        with st.spinner("视觉设计总监正在思考..."):
-            # 锁定 2.5 Flash 保证快速迭代
+    if user_idea := st.chat_input("输入你的传播想法或指令..."):
+        st.session_state.chat_log.append({"role": "user", "content": user_idea})
+        with st.spinner(f"正在进行{st.session_state.work_phase}..."):
+            # 锁定 2.5-flash 引擎保证沟通无延迟
             model = genai.GenerativeModel('gemini-2.5-flash')
             
-            # 注入“别人家”的核心提示词逻辑
-            system_prompt = """
-            你是一位融合咨询公司战略思维与一线设计美学的视觉设计总监。
-            任务：为哈弗(Haval)竞标案生成 PPT 方案。
-            规则：禁止使用 emoji。每一页需输出：标题、内容逻辑、设计执行策略（含色值、版面结构）。
+            # 注入专业公关策略提示词
+            sys_prompt = f"""
+            你是一位顶尖公关战略顾问。当前阶段：【{st.session_state.work_phase}】。
+            任务：针对哈弗(Haval)竞标案。
+            逻辑：严禁使用 emoji。必须先评估传播方向的合理性、差异化和竞品杀伤力，再输出对应内容。
             """
             
-            if uploaded_style:
-                res = model.generate_content([system_prompt, user_cmd, Image.open(uploaded_style)])
-            else:
-                res = model.generate_content(f"{system_prompt}\n指令：{user_cmd}")
+            res = model.generate_content(f"{sys_prompt}\n用户想法：{user_idea}")
             
-            st.session_state.current_slide["content"] = res.text
-            st.session_state.history.append({"role": "assistant", "content": "设计方案已在右侧生成。"})
+            # 状态同步
+            if st.session_state.work_phase == "策略诊断": st.session_state.strategy_board["diagnosis"] = res.text
+            elif st.session_state.work_phase == "大纲架构": st.session_state.strategy_board["outline"] = res.text
+            elif st.session_state.work_phase == "内容填充": st.session_state.strategy_board["content"] = res.text
+            
+            st.session_state.chat_log.append({"role": "assistant", "content": f"已完成{st.session_state.work_phase}，请查阅右侧。"})
             st.rerun()
 
-# --- 4. 右侧：全案视觉画板 ---
-st.subheader("生成的视觉成稿预览")
+# --- 4. 右侧：实时策略与画板同步 ---
+st.subheader("哈弗（Haval）竞标全案：实时预览画板")
 
-with st.container():
-    st.markdown('<div class="slide-canvas">', unsafe_allow_html=True)
-    
-    # 上半部分：视觉 KV
-    if st.button("🖼️ 生成 Imagen 4.0 顶奢视觉"):
-        with st.spinner("正在绘制竞标级大片..."):
+col_main, col_sub = st.columns([1, 1])
+
+with col_main:
+    st.markdown('<div class="phase-tag">📍 策略诊断与逻辑</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown(st.session_state.strategy_board["diagnosis"] if st.session_state.strategy_board["diagnosis"] else "等待输入传播想法...")
+
+with col_sub:
+    st.markdown('<div class="phase-tag">📜 大纲与内容</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown(st.session_state.strategy_board["outline"] if st.session_state.strategy_board["outline"] else "策略定稿后生成大纲...")
+
+# 底部：视觉与生产力
+st.markdown("---")
+b1, b2, b3, _ = st.columns([1.5, 1, 1, 2])
+
+with b1:
+    if st.button("🖼️ 确认策略，生成 Imagen 4.0 视觉 KV"):
+        with st.spinner("视觉总监正在根据策略构图..."):
             try:
-                img_model = genai.GenerativeModel('imagen-4.0-ultra-generate-001')
-                img_res = img_model.generate_content(f"High-end PR Key Visual for Haval Raptor SUV, based on professional design specs: {st.session_state.current_slide['content']}")
-                if img_res.candidates[0].content.parts[0].inline_data:
-                    st.session_state.current_slide["kv"] = img_res.candidates[0].content.parts[0].inline_data.data
+                # 锁定顶级 Imagen 4.0
+                v_model = genai.GenerativeModel('imagen-4.0-ultra-generate-001')
+                v_res = v_model.generate_content(f"A high-end PR Key Visual for Haval Raptor SUV based on strategy: {st.session_state.strategy_board['diagnosis']}")
+                if v_res.candidates[0].content.parts[0].inline_data:
+                    st.session_state.strategy_board["kv"] = v_res.candidates[0].content.parts[0].inline_data.data
             except Exception as e: st.error(f"视觉引擎连接中: {e}")
 
-    if st.session_state.current_slide["kv"]:
-        st.image(st.session_state.current_slide["kv"], use_container_width=True)
-    else:
-        st.markdown('<div style="height:350px; background:#f0f0f0; display:flex; align-items:center; justify-content:center;">🖼️ 待生成视觉 KV</div>', unsafe_allow_html=True)
-    
-    # 下半部分：文案与设计规格
-    st.markdown('<div class="design-specs">', unsafe_allow_html=True)
-    st.markdown(st.session_state.current_slide["content"])
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+if st.session_state.strategy_board["kv"]:
+    st.image(st.session_state.strategy_board["kv"], caption="基于策略生成的视觉成稿", use_container_width=True)
 
-# 底部生产力工具
-st.markdown("---")
-b1, b2, b3, _ = st.columns([1, 1, 1, 3])
-if b1.button("✨ 3.1 Pro 深度润色"):
+if b2.button("✨ 3.1 Pro 深度润色"):
     pro = genai.GenerativeModel('gemini-3.1-pro-preview')
-    st.session_state.current_slide["content"] = pro.generate_content(f"专业润色哈弗竞标文案：{st.session_state.current_slide['content']}").text
+    st.session_state.strategy_board["content"] = pro.generate_content(f"专业润色内容：{st.session_state.strategy_board['content']}").text
     st.rerun()
 
-b2.button("👁️ 全屏演示", use_container_width=True)
-b3.download_button("📥 导出 PPTX 定稿", data="...", file_name="Haval_Raptor.pptx")
+b3.download_button("📥 导出 PPTX 定稿", data="...", file_name="Haval_Proposal.pptx")
