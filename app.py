@@ -1,134 +1,145 @@
 import streamlit as st
 import google.generativeai as genai
-import requests
-from io import BytesIO
 
-# --- 1. 动力系统：求稳 ---
+# --- 1. 动力系统 ---
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"].strip())
 
-# --- 2. 核心状态：Master KV 优先 ---
-if 'workflow_state' not in st.session_state: st.session_state.workflow_state = "1_master_kv" # 1_master_kv 或 2_rollout
-if 'style_prompt' not in st.session_state: st.session_state.style_prompt = ""
-if 'master_kv_img' not in st.session_state: st.session_state.master_kv_img = None
-if 'slides_content' not in st.session_state: st.session_state.slides_content = []
+# --- 2. 状态初始化 (包含视觉子工作流状态) ---
+for key in ['step', 'history', 'outline', 'content']:
+    if key not in st.session_state:
+        st.session_state[key] = "大纲构思" if key == 'step' else ([] if key == 'history' else "")
 
-# --- 3. 界面重塑 ---
-st.set_page_config(page_title="Haval KV Studio", layout="wide")
+# 视觉专属状态
+if 'master_kv' not in st.session_state: st.session_state.master_kv = None
+if 'kv_locked' not in st.session_state: st.session_state.kv_locked = False
+if 'slide_deck' not in st.session_state: st.session_state.slide_deck = []
+
+# --- 3. 界面审美 ---
+st.set_page_config(page_title="Nano Strategic Studio", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #f7f7f7; }
-    .kv-box { border: 2px solid #ff6b00; border-radius: 12px; padding: 20px; background: #fff; margin-bottom: 20px; }
-    .slide-box { border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fff; margin-bottom: 15px; }
+    section[data-testid="stSidebar"] { background-color: white !important; border-right: 1px solid #eee; width: 420px !important; }
+    .canvas-box { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.05); border: 1px solid #ddd; margin-bottom: 20px;}
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🦔 Nano Studio：视觉主导工作站")
-
-# ==========================================
-# 阶段一：死磕主视觉 (Master KV)
-# ==========================================
-if st.session_state.workflow_state == "1_master_kv":
-    st.markdown("### 📍 第一步：定调核心视觉风格与首张 KV")
+# --- 4. 左侧：宏观流程控制 ---
+with st.sidebar:
+    st.title("🦔 Nano Studio")
+    st.caption("🚀 Paid Tier 3 | 宏观逻辑 + 视觉子工作流")
     
-    col_ctrl, col_view = st.columns([1, 1.5])
+    # 宏观三大步
+    st.radio("🎯 宏观工作流", ["大纲构思", "内容填充", "视觉定稿"], key="step")
     
-    with col_ctrl:
-        user_style = st.text_area("输入视觉风格与画面构想：", placeholder="例如：哈弗猛龙在夕阳沙漠中疾驰，黑橙撞色，赛博朋克风，适合做PPT封面...")
-        
-        if st.button("🖼️ 极速生成首张试稿 KV", type="primary", use_container_width=True):
-            if user_style:
-                with st.spinner("正在调配风格并渲染首图..."):
-                    try:
-                        # 先用文本模型提炼专业的绘图 Prompt，确保出图质量
-                        text_model = genai.GenerativeModel('gemini-2.5-flash')
-                        prompt_res = text_model.generate_content(f"将以下想法翻译成极具专业画面感的英文绘图提示词，用于汽车公关竞标PPT的KV背景：{user_style}")
-                        st.session_state.style_prompt = prompt_res.text
-                        
-                        # 【出图修复】：使用最稳妥的 Imagen 3 调用方式
-                        # 注意：如果你的 SDK 较老，这里可能会报错。你可以更新 SDK: pip install -U google-generativeai
-                        img_model = genai.ImageGenerationModel("imagen-3.0-generate-001")
-                        result = img_model.generate_images(
-                            prompt=st.session_state.style_prompt,
-                            number_of_images=1,
-                            aspect_ratio="16:9"
-                        )
-                        st.session_state.master_kv_img = result.images[0]._pil_image # 提取 PIL 图像对象
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"出图失败，请检查 API 权限或 SDK 版本: {e}")
-                        st.info("提示：终端运行 `pip install -U google-generativeai` 更新一下。")
-
-        st.markdown("---")
-        st.write("💡 **如果第一张不行？**")
-        st.write("直接在上方修改你的词，重新点击生成，直到你觉得这张图能拿去给客户提案为止。")
-
-    with col_view:
-        if st.session_state.master_kv_img:
-            st.markdown('<div class="kv-box">', unsafe_allow_html=True)
-            st.image(st.session_state.master_kv_img, caption="首张提案 KV (Master Visual)", use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # 当有图时，出现进入下一步的按钮
-            if st.button("✅ 视觉风格确认，陆续生成后续 PPT 页面 ➡️", use_container_width=True):
-                st.session_state.workflow_state = "2_rollout"
+    chat_box = st.container(height=350)
+    for m in st.session_state.history:
+        chat_box.chat_message(m["role"]).write(m["content"])
+    
+    # 只有在前两步才使用聊天框控制逻辑
+    if st.session_state.step in ["大纲构思", "内容填充"]:
+        if user_cmd := st.chat_input("输入策略或内容指令..."):
+            st.session_state.history.append({"role": "user", "content": user_cmd})
+            with st.spinner("AI 极速处理中..."):
+                model = genai.GenerativeModel('gemini-2.5-flash')
+                sys_prompt = f"你是公关总监。当前:【{st.session_state.step}】。已定大纲: {st.session_state.outline}。规则: 禁emoji，只输出专业Markdown。如果在写大纲则不输出正文，如果在写正文则严格依照大纲。"
+                res = model.generate_content(f"{sys_prompt}\n指令：{user_cmd}")
+                
+                if st.session_state.step == "大纲构思": st.session_state.outline = res.text
+                elif st.session_state.step == "内容填充": st.session_state.content = res.text
+                
+                st.session_state.history.append({"role": "assistant", "content": f"✅ {st.session_state.step} 已更新。"})
                 st.rerun()
-        else:
-            st.info("👈 在左侧输入风格，生成第一张试稿图。")
+    else:
+        st.info("🎨 当前处于【视觉定稿】阶段，请在右侧操作面板进行视觉调试。")
 
-# ==========================================
-# 阶段二：陆续出图与延展 (Rollout)
-# ==========================================
-elif st.session_state.workflow_state == "2_rollout":
-    st.markdown("### 📍 第二步：基于主视觉陆续延展页面")
+# --- 5. 右侧：宏观内容展示 & 视觉子工作流 ---
+if st.session_state.step == "大纲构思":
+    st.subheader("📍 阶段一：大纲构思 (Anchor)")
+    with st.container(border=True):
+        st.markdown(st.session_state.outline if st.session_state.outline else "👈 在左侧输入哈弗竞标方向，生成骨架...")
+
+elif st.session_state.step == "内容填充":
+    st.subheader("📍 阶段二：深度内容填充 (Execution)")
+    col1, col2 = st.columns([1, 1.5])
+    with col1:
+        st.caption("📜 锁定的骨架")
+        st.markdown(st.session_state.outline)
+    with col2:
+        st.caption("📝 详细公关文案")
+        st.markdown(st.session_state.content if st.session_state.content else "👈 根据大纲，在左侧发指令生成具体文案...")
+
+elif st.session_state.step == "视觉定稿":
+    st.subheader("📍 阶段三：视觉定稿 (KV & Rollout)")
     
-    if st.button("↩️ 返回修改主视觉"):
-        st.session_state.workflow_state = "1_master_kv"
-        st.rerun()
+    # ==========================================
+    # 视觉子工作流 1：死磕 Master KV
+    # ==========================================
+    if not st.session_state.kv_locked:
+        st.markdown("#### 1. 测算并确立主视觉 (Master KV)")
+        st.info("在大量生成页面前，先生成一张定调图。不行就一直改，直到满意为止。")
         
-    # 展示已锁定的主视觉
-    st.write("已锁定的视觉基调：")
-    st.image(st.session_state.master_kv_img, width=300)
-    
-    st.markdown("---")
-    
-    col_add, col_list = st.columns([1, 1.5])
-    
-    with col_add:
-        slide_topic = st.text_input("下一页做什么内容？", placeholder="例如：产品核心卖点 / 竞品对比分析")
-        if st.button("➕ 生成新一页 (图+文)"):
-            if slide_topic:
-                with st.spinner(f"正在基于主风格生成【{slide_topic}】..."):
+        col_ctrl, col_view = st.columns([1, 1.5])
+        with col_ctrl:
+            v_prompt = st.text_area("输入视觉指令（默认参考大纲）：", value="哈弗猛龙，硬核智电越野，极简高级公关PPT背景图，16:9")
+            if st.button("🖼️ 生成/修改 首张测试 KV", type="primary", use_container_width=True):
+                with st.spinner("调用 Imagen 3.0 绘图中..."):
                     try:
-                        # 1. 自动写文案
-                        text_model = genai.GenerativeModel('gemini-2.5-flash')
-                        txt_res = text_model.generate_content(f"为汽车竞标PPT写一页文案。主题：{slide_topic}。要求：专业公关措辞。")
-                        
-                        # 2. 保持风格一致陆续出图
+                        # 确保 SDK 更新后使用最新的标准调用
                         img_model = genai.ImageGenerationModel("imagen-3.0-generate-001")
-                        img_res = img_model.generate_images(
-                            prompt=f"A presentation slide background for {slide_topic}, matching this style: {st.session_state.style_prompt}, 16:9, clean layout",
-                            number_of_images=1,
-                            aspect_ratio="16:9"
-                        )
-                        
-                        # 存入列表
-                        st.session_state.slides_content.append({
-                            "topic": slide_topic,
-                            "text": txt_res.text,
-                            "img": img_res.images[0]._pil_image
-                        })
+                        res = img_model.generate_images(prompt=v_prompt, number_of_images=1, aspect_ratio="16:9")
+                        st.session_state.master_kv = res.images[0]._pil_image
                         st.rerun()
                     except Exception as e:
-                        st.error(f"延展生成失败: {e}")
-
-    with col_list:
-        if not st.session_state.slides_content:
-            st.info("👈 输入下一页的主题，开始陆续生成。")
-        else:
-            for idx, slide in enumerate(st.session_state.slides_content):
-                st.markdown(f'<div class="slide-box">', unsafe_allow_html=True)
-                st.write(f"**Page {idx+1}: {slide['topic']}**")
-                st.image(slide["img"], use_container_width=True)
-                st.write(slide["text"])
+                        st.error(f"绘图异常，请确保 SDK 为最新版: {e}")
+            
+            if st.session_state.master_kv:
+                st.markdown("---")
+                if st.button("✅ 满意！锁定此视觉风格，准备陆续出图 ➡️", use_container_width=True):
+                    st.session_state.kv_locked = True
+                    st.rerun()
+                    
+        with col_view:
+            if st.session_state.master_kv:
+                st.markdown('<div class="canvas-box">', unsafe_allow_html=True)
+                st.image(st.session_state.master_kv, caption="Master KV 试稿", use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="canvas-box" style="text-align:center; color:#999;">等待生成测试图</div>', unsafe_allow_html=True)
+
+    # ==========================================
+    # 视觉子工作流 2：延展陆续出图 (Rollout)
+    # ==========================================
+    else:
+        st.markdown("#### 2. 基于主视觉陆续生成页面 (Rollout)")
+        col_lock, col_action = st.columns([1, 3])
+        
+        with col_lock:
+            st.caption("🔒 已锁定主视觉调性")
+            st.image(st.session_state.master_kv, use_container_width=True)
+            if st.button("↩️ 解锁重新定调"):
+                st.session_state.kv_locked = False
+                st.rerun()
+                
+        with col_action:
+            new_slide = st.text_input("下一页需要什么配图？", placeholder="例如：哈弗猛龙的动力系统透视图 / 竞品对比网格")
+            if st.button("➕ 陆续生成下一张图"):
+                if new_slide:
+                    with st.spinner(f"正在保持风格一致生成：{new_slide}..."):
+                        try:
+                            img_model = genai.ImageGenerationModel("imagen-3.0-generate-001")
+                            res = img_model.generate_images(
+                                prompt=f"A presentation slide background for {new_slide}, matching the established high-end Haval PR style, 16:9",
+                                number_of_images=1, aspect_ratio="16:9"
+                            )
+                            st.session_state.slide_deck.append({"topic": new_slide, "img": res.images[0]._pil_image})
+                            st.rerun()
+                        except Exception as e: st.error(f"出图异常: {e}")
+            
+            # 展示陆续出图的成果
+            st.markdown("---")
+            if st.session_state.slide_deck:
+                for idx, slide in enumerate(st.session_state.slide_deck):
+                    st.write(f"**Slide {idx+1}: {slide['topic']}**")
+                    st.image(slide['img'], width=600)
