@@ -2,90 +2,94 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# --- 1. 核心动力：Paid Tier 3 顶级引擎 ---
+# --- 1. 核心动力：多模型分级策略 (省 Token 关键) ---
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"].strip())
 
-# 状态管理
-if 'chat_history' not in st.session_state: st.session_state.chat_history = []
-if 'ppt_content' not in st.session_state: st.session_state.ppt_content = "等待生成大纲..."
-if 'style_lib' not in st.session_state: st.session_state.style_lib = "默认简约"
+# 初始化状态
+if 'chat' not in st.session_state: st.session_state.chat = []
+if 'preview' not in st.session_state: st.session_state.preview = {"title": "等待构思...", "body": ""}
+if 'style' not in st.session_state: st.session_state.style = "未设定"
 
-# --- 2. 审美重塑：Nano Studio 极简风 CSS ---
-st.set_page_config(page_title="Nano PPT Lab", layout="wide")
+# --- 2. 界面审美：Nano Studio 洁白纯净风 ---
+st.set_page_config(page_title="Haval PR Studio", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #fcfcfc; color: #333; }
-    /* 左侧聊天区域 */
-    section[data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #eee; width: 450px !important; }
-    /* 风格卡片网格 */
-    .style-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
-    .style-card {
-        padding: 15px; border-radius: 12px; text-align: center;
-        background: #f8f9fa; border: 1px solid #eee; transition: 0.3s; cursor: pointer;
+    /* 对话框样式 */
+    [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #eee; width: 400px !important; }
+    /* 卡片式预览 */
+    .ppt-frame {
+        background: white; border-radius: 12px; padding: 50px;
+        box-shadow: 0 15px 45px rgba(0,0,0,0.08); border: 1px solid #efefef;
+        min-height: 550px; margin-top: 20px;
     }
-    .style-card:hover { border-color: #28a745; background: #f0fff4; }
-    /* PPT 预览区 */
-    .ppt-preview {
-        background: white; border-radius: 8px; border: 1px solid #ddd;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.05); padding: 40px; min-height: 500px;
-    }
+    .stButton>button { border-radius: 10px; height: 45px; font-weight: 600; }
+    .main-btn { background: #28a745 !important; color: white !important; border: none !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 侧边栏：对话式交互 (左) ---
+# --- 3. 左侧交互区：对话即生产 ---
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/hedgehog.png", width=50) # 加入你的刺猬 IP 小彩蛋
-    st.subheader("PPT 视觉设计助手")
-    st.caption("🚀 Paid Tier 3 满血版 | 余额: HK$2,340")
+    st.title("🦔 Nano Studio") # 刺猬 IP 精神寄托
+    st.caption("🚀 Paid Tier 3 满血版 | 省 Token 模式已开启")
     
-    # 聊天记录展示
-    chat_container = st.container(height=450)
-    for msg in st.session_state.chat_history:
-        chat_container.chat_message(msg["role"]).write(msg["content"])
+    # 对话流展示
+    chat_box = st.container(height=400)
+    for m in st.session_state.chat:
+        chat_box.chat_message(m["role"]).write(m["content"])
     
-    # 风格快捷入口
+    # 交互式功能区
     st.markdown("---")
-    st.write("🎨 **风格库 (点选或喂图)**")
-    c1, c2 = st.columns(2)
-    if c1.button("🔥 硬核越野"): st.session_state.style_lib = "黑橙硬核"; st.toast("风格已选定：硬核越野")
-    if c2.button("⚡ 智电科技"): st.session_state.style_lib = "白蓝科技"; st.toast("风格已选定：智电科技")
+    st.write("🎨 **风格预设**")
+    cols = st.columns(2)
+    if cols[0].button("🔥 硬核越野", use_container_width=True): 
+        st.session_state.style = "硬核越野（黑橙）"
+        st.session_state.chat.append({"role": "assistant", "content": "收到，视觉风格已锁定：硬核越野。"})
+    if cols[1].button("⚡ 智电科技", use_container_width=True): 
+        st.session_state.style = "极简科技（白蓝）"
+        st.session_state.chat.append({"role": "assistant", "content": "收到，视觉风格已锁定：极简智电。"})
     
-    uploaded_file = st.file_uploader("🖼️ 投喂审美参考图 (可选)", type=['png', 'jpg'])
+    ref_img = st.file_uploader("🖼️ 投喂参考图 (可选)", type=['png', 'jpg'])
     
-    # 底部输入框
-    user_input = st.chat_input("跟我聊聊你的哈弗方案需求...")
-    if user_input:
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
-        with st.spinner("思考中..."):
-            model = genai.GenerativeModel('gemini-2.0-flash') # 用 2.0 保证对话流畅度
-            prompt = f"你是一位哈弗公关专家。基于用户需求'{user_input}'，参考风格'{st.session_state.style_lib}'，请生成或修改 PPT 大纲，并给出具体的视觉建议。"
+    # 聊天输入
+    if user_input := st.chat_input("说出你的哈弗竞标想法..."):
+        st.session_state.chat.append({"role": "user", "content": user_input})
+        
+        with st.spinner("AI 正在构思..."):
+            # 默认使用 Flash 以节省 Token
+            model = genai.GenerativeModel('models/gemini-2.0-flash')
             
-            # 如果有图片，启用多模态理解
-            if uploaded_file:
-                img = Image.open(uploaded_file)
+            # 多模态处理
+            prompt = f"你现在是哈弗公关总监。针对需求：'{user_input}'，当前风格：'{st.session_state.style}'，请更新 PPT 预览内容。如果是构思大纲，请分条列出；如果是内容填充，请精准专业。"
+            
+            if ref_img:
+                img = Image.open(ref_img)
                 response = model.generate_content([prompt, img])
             else:
                 response = model.generate_content(prompt)
             
-            st.session_state.ppt_content = response.text
-            st.session_state.chat_history.append({"role": "assistant", "content": "方案已更新，请在右侧预览。"})
+            st.session_state.preview["body"] = response.text
+            st.session_state.chat.append({"role": "assistant", "content": "已根据您的建议更新了右侧预览。"})
             st.rerun()
 
-# --- 4. 主界面：生成的 PPT 页面 (右) ---
-col_main, _ = st.columns([10, 0.1])
-with col_main:
-    st.markdown("### 生成的 PPT 页面")
-    st.caption(f"当前选定基调：{st.session_state.style_lib}")
-    
-    with st.container(border=True):
-        st.markdown(f'<div class="ppt-preview">', unsafe_allow_html=True)
-        # 根据不同阶段展示内容
-        st.write(st.session_state.ppt_content)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    c1, c2, c3 = st.columns(3)
-    c1.button("👁️ 演示模式")
-    c2.button("✨ 自动润色")
-    c3.download_button("📥 导出 PDF / PPTX", data="...", file_name="Haval_Proposal.pptx")
+# --- 4. 右侧预览区：沉浸式预览 ---
+st.subheader("生成的 PPT 预览")
+st.caption(f"当前审美基调：{st.session_state.style}")
+
+with st.container():
+    st.markdown('<div class="ppt-frame">', unsafe_allow_html=True)
+    st.write(st.session_state.preview["body"])
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# 底部动作条
+st.markdown("---")
+b_cols = st.columns([1, 1, 1, 3])
+if b_cols[0].button("✨ 深度润色 (消耗 Pro)"):
+    # 只有用户主动点润色，才动用高成本模型
+    pro_model = genai.GenerativeModel('models/gemini-3.1-pro-preview')
+    st.session_state.preview["body"] = pro_model.generate_content(f"请用极其专业的公关措辞润色这段哈弗竞标内容：{st.session_state.preview['body']}").text
+    st.rerun()
+
+b_cols[1].button("👁️ 演示预览", use_container_width=True)
+b_cols[2].download_button("📥 导出 PPTX", data="...", file_name="Haval_Proposal.pptx", use_container_width=True)
