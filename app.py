@@ -1,92 +1,107 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
 
-# --- 1. 动力系统：锁定 2026 顶级模型 (Tier 3) ---
+# --- 1. 动力系统 ---
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"].strip())
 
-# 【核心精简】：砍掉 diagnosis，直接从大纲起步
-for key in ['step', 'history', 'outline', 'content', 'kv']:
-    if key not in st.session_state:
-        if key == 'step': st.session_state[key] = "大纲构思"
-        elif key == 'history': st.session_state[key] = []
-        elif key == 'kv': st.session_state[key] = None
-        else: st.session_state[key] = ""
+# --- 2. 核心状态锁 (单向闯关，不用 Radio) ---
+if 'step_level' not in st.session_state: st.session_state.step_level = 1 # 1:大纲, 2:内容填充
+if 'history' not in st.session_state: st.session_state.history = []
+if 'outline' not in st.session_state: st.session_state.outline = ""
+if 'content' not in st.session_state: st.session_state.content = ""
+if 'kv' not in st.session_state: st.session_state.kv = None
 
-# --- 2. 界面审美：Nano Studio 纯净画板 ---
+# --- 3. 界面重塑 ---
 st.set_page_config(page_title="Haval Strategic Studio", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #f7f7f7; }
     section[data-testid="stSidebar"] { background-color: white !important; border-right: 1px solid #eee; width: 420px !important; }
-    .slide-canvas {
-        background: white; border-radius: 12px; padding: 30px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.05); border: 1px solid #ddd;
-        min-height: 500px; color: #333;
-    }
-    .status-badge { padding: 5px 12px; border-radius: 20px; background: #fff3e6; color: #ff6b00; font-weight: bold; font-size: 0.8rem; }
+    .status-bar { padding: 10px; background: #1a1a1a; color: #fff; font-weight: bold; border-radius: 8px; margin-bottom: 20px; text-align: center; }
+    .anchor-box { background: #fff3e6; border-left: 4px solid #ff6b00; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 左侧：交互沟通 (纯执行总监人格) ---
 with st.sidebar:
     st.title("🦔 Nano Studio")
-    st.caption(f"🚀 Paid Tier 3 | 余额: HK$2,340")
+    st.caption("🚀 Paid Tier 3 | 余额: HK$2,340")
     
-    # 砍掉策略诊断，只有三个硬核执行环节
-    steps = ["大纲构思", "内容填充", "视觉定稿"]
-    st.radio("🎯 当前执行阶段", steps, key="step")
-    
-    chat_box = st.container(height=380)
-    for m in st.session_state.history:
-        chat_box.chat_message(m["role"]).write(m["content"])
-    
-    if user_cmd := st.chat_input("输入哈弗方案想法，直接出大纲..."):
-        st.session_state.history.append({"role": "user", "content": user_cmd})
-        with st.spinner(f"正在极速生成：{st.session_state.step}"):
-            model = genai.GenerativeModel('gemini-2.5-flash')
-            
-            # 【强制约束】：禁止反问，直接输出
-            sys_prompt = f"""
-            你是一位高效的公关视觉设计总监。
-            当前环节：【{st.session_state.step}】。
-            已锁死大纲锚点：{st.session_state.outline}
-            
-            规则：
-            1. 严禁反问用户！严禁分析策略合理性！直接执行输出。
-            2. 禁止使用 emoji。
-            3. 如果处于【大纲构思】，直接输出结构化的 PPT 大纲。
-            4. 如果处于【内容填充】，基于大纲直接输出：核心文案、Hex 色值、排版说明。
-            """
-            
-            res = model.generate_content(f"{sys_prompt}\n最新指令：{user_cmd}")
-            
-            if st.session_state.step == "大纲构思": st.session_state.outline = res.text
-            elif st.session_state.step == "内容填充": st.session_state.content = res.text
-            
-            st.session_state.history.append({"role": "assistant", "content": f"✅ {st.session_state.step}已更新，请在右侧查阅。"})
+    st.markdown("---")
+    # 显示当前闯关进度
+    if st.session_state.step_level == 1:
+        st.success("📍 当前阶段：1. 大纲构思")
+    else:
+        st.success("📍 当前阶段：2. 内容与视觉执行")
+        if st.button("↩️ 返回修改大纲", use_container_width=True):
+            st.session_state.step_level = 1
             st.rerun()
 
-# --- 4. 右侧：直接输出预览 ---
-st.markdown(f'<span class="status-badge">📍 当前进度：{st.session_state.step}</span>', unsafe_allow_html=True)
+    chat_box = st.container(height=350)
+    for m in st.session_state.history:
+        chat_box.chat_message(m["role"]).write(m["content"])
 
-col_view, col_anchor = st.columns([1.2, 1])
+    if user_cmd := st.chat_input("对我下达指令..."):
+        st.session_state.history.append({"role": "user", "content": user_cmd})
+        with st.spinner("极速响应中..."):
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            
+            # 根据进度切换大脑逻辑
+            if st.session_state.step_level == 1:
+                sys_prompt = "你是哈弗公关总监。禁止 emoji。直接根据用户需求输出结构化的 PPT 大纲。"
+                res = model.generate_content(f"{sys_prompt}\n指令：{user_cmd}")
+                st.session_state.outline = res.text
+            else:
+                sys_prompt = f"你是视觉设计总监。必须严格基于以下大纲行事：\n{st.session_state.outline}\n规则：禁止 emoji。输出本页的核心文案、Hex配色、排版建议。"
+                res = model.generate_content(f"{sys_prompt}\n指令：{user_cmd}")
+                st.session_state.content = res.text
+            
+            st.session_state.history.append({"role": "assistant", "content": "✅ 已更新，请看右侧。"})
+            st.rerun()
 
-with col_view:
-    st.write("🖼️ **执行画板**")
-    if st.session_state.kv:
-        st.image(st.session_state.kv, use_container_width=True)
+    st.markdown("---")
+    if st.button("🗑️ 清空重来", type="primary", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
+
+# --- 4. 右侧画板 ---
+if st.session_state.step_level == 1:
+    st.markdown('<div class="status-bar">🎯 阶段一：打磨传播大纲</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown(st.session_state.outline if st.session_state.outline else "👈 在左侧输入你的哈弗猛龙传播方向，生成大纲。")
     
-    with st.container(border=True):
-        content_to_show = st.session_state.content if st.session_state.step == "内容填充" else st.session_state.outline
-        st.markdown(content_to_show if content_to_show else "等待输入直接生成...")
+    # 闯关按钮
+    if st.session_state.outline:
+        if st.button("✅ 大纲确认无误，进入详细内容填充 ➡️", type="primary"):
+            st.session_state.step_level = 2
+            st.rerun()
 
-with col_anchor:
-    st.write("📜 **大纲锚点 (Anchor)**")
-    with st.container(border=True):
-        st.markdown(st.session_state.outline if st.session_state.outline else "等待大纲生成...")
+elif st.session_state.step_level == 2:
+    st.markdown('<div class="status-bar">🎯 阶段二：设计与文案执行</div>', unsafe_allow_html=True)
+    
+    # 顶部锁定大纲锚点
+    st.markdown("📜 **锁定的大纲锚点**")
+    st.markdown(f'<div class="anchor-box">{st.session_state.outline}</div>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1.5, 1])
+    with col1:
+        st.write("🖼️ **16:9 视觉预览**")
+        if st.session_state.kv:
+            st.image(st.session_state.kv, use_container_width=True)
+        else:
+            st.markdown('<div style="aspect-ratio:16/9; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:8px;">点击下方按钮生成商业级 KV</div>', unsafe_allow_html=True)
+        
+        if st.button("🖼️ 生成 Imagen 4.0 顶奢 KV"):
+            with st.spinner("绘图中..."):
+                try:
+                    v_model = genai.GenerativeModel('imagen-4.0-ultra-generate-001')
+                    v_res = v_model.generate_content(f"High-end PR KV for Haval Raptor SUV based on: {st.session_state.content}")
+                    if v_res.candidates[0].content.parts[0].inline_data:
+                        st.session_state.kv = v_res.candidates[0].content.parts[0].inline_data.data
+                        st.rerun()
+                except Exception as e: st.error(f"异常: {e}")
 
-# 底部工具区
-st.sidebar.markdown("---")
-if st.sidebar.button("🖼️ 生成 Imagen 4.0 顶奢 KV"):
+    with col2:
+        st.write("📝 **设计与文案 Spec**")
+        with st.container(border=True):
+            st.markdown(st.session_state.content if st.session_state.content else "👈 在左侧输入要求，生成本页详情。")
